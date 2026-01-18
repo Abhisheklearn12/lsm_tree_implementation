@@ -1,3 +1,6 @@
+mod wal;
+use wal::{WAL, WALOp};
+
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -33,6 +36,9 @@ pub struct LSMTree {
     /// Counter for generating unique SSTable filenames
     /// Ensures each flush creates a distinct file (e.g., "sstable_0.db")
     sstable_counter: usize,
+
+    /// Write-Ahead Log for crash recovery and durability
+    wal: WAL,
 }
 
 impl LSMTree {
@@ -46,19 +52,47 @@ impl LSMTree {
     /// ```
     /// let lsm = LSMTree::new("./data".into(), 4 * 1024 * 1024);
     /// ```
-    pub fn new(data_dir: PathBuf, memtable_size_threshold: usize) -> Self {
+    pub fn new(data_dir: PathBuf, memtable_size_threshold: usize) -> std::io::Result<Self> {
         // Create data directory if it doesn't exist
         // Panics on failure since we can't operate without storage
         std::fs::create_dir_all(&data_dir).expect("Failed to create data directory");
 
-        Self {
-            memtable: BTreeMap::new(),
+        // Initialize WAL for crash recovery
+        let wal_path = data_dir.join("wal.log");
+        let wal = WAL::new(wal_path)?;
+
+        // Recover memtable from WAL if exists
+        let mut memtable: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
+        let mut memtable_size: usize = 0;
+
+        let entries = wal.recover()?;
+        for entry in entries {
+            match entry.op {
+                WALOp::Put => {
+                    let size = entry.key.len() + entry.value.len();
+                    if let Some(old_value) = memtable.get(&entry.key) {
+                        memtable_size -= entry.key.len() + old_value.len();
+                    }
+                    memtable.insert(entry.key, entry.value);
+                    memtable_size += size;
+                }
+                WALOp::Delete => {
+                    if let Some(old_value) = memtable.remove(&entry.key) {
+                        memtable_size -= entry.key.len() + old_value.len();
+                    }
+                }
+            }
+        }
+
+        Ok(Self {
+            memtable,
             memtable_size_threshold,
-            memtable_size: 0,
+            memtable_size,
             sstables: Vec::new(),
             data_dir,
             sstable_counter: 0,
-        }
+            wal,
+        })
     }
 
     /// Inserts or updates a key-value pair
@@ -74,7 +108,10 @@ impl LSMTree {
     /// ```
     /// lsm.put(b"user:123".to_vec(), b"Alice".to_vec());
     /// ```
-    pub fn put(&mut self, key: Vec<u8>, value: Vec<u8>) {
+    pub fn put(&mut self, key: Vec<u8>, value: Vec<u8>) -> std::io::Result<()> {
+        // Write to WAL first for durability
+        self.wal.append_put(&key, &value)?;
+
         // Calculate size impact: key + value length
         // If key exists, we'll adjust for the old value size later
         let size_delta = key.len() + value.len();
@@ -95,8 +132,10 @@ impl LSMTree {
         // Check if we need to flush to disk
         // This keeps memory usage bounded and ensures durability
         if self.memtable_size >= self.memtable_size_threshold {
-            self.flush().expect("Failed to flush memtable");
+            self.flush()?;
         }
+
+        Ok(())
     }
 
     /// Retrieves value for a given key
@@ -187,6 +226,9 @@ impl LSMTree {
         // Clear memtable now that data is safely on disk
         self.memtable.clear();
         self.memtable_size = 0;
+
+        // Clear WAL since data is now durable in SSTable
+        self.wal.clear()?;
 
         Ok(())
     }
@@ -285,16 +327,20 @@ fn main() {
 
     // Create LSM tree with 100 byte threshold (very small for demo purposes)
     // In production, use 4MB-64MB: 4 * 1024 * 1024
-    let mut lsm = LSMTree::new(PathBuf::from("./lsm_data"), 100);
+    let mut lsm =
+        LSMTree::new(PathBuf::from("./lsm_data"), 100).expect("Failed to create LSM tree");
 
     // Example 1: Basic key-value operations
     println!("Example 1: Basic Operations");
     println!("---------------------------");
 
     // Insert some user data
-    lsm.put(b"user:1".to_vec(), b"Alice".to_vec());
-    lsm.put(b"user:2".to_vec(), b"Bob".to_vec());
-    lsm.put(b"user:3".to_vec(), b"Charlie".to_vec());
+    lsm.put(b"user:1".to_vec(), b"Alice".to_vec())
+        .expect("Failed to put user:1");
+    lsm.put(b"user:2".to_vec(), b"Bob".to_vec())
+        .expect("Failed to put user:2");
+    lsm.put(b"user:3".to_vec(), b"Charlie".to_vec())
+        .expect("Failed to put user:3");
 
     // Retrieve and display values
     if let Some(value) = lsm.get(b"user:1") {
@@ -317,7 +363,8 @@ fn main() {
     println!("Example 2: Updates");
     println!("------------------");
 
-    lsm.put(b"user:1".to_vec(), b"Alice Smith".to_vec());
+    lsm.put(b"user:1".to_vec(), b"Alice Smith".to_vec())
+        .expect("Failed to update user:1");
     if let Some(value) = lsm.get(b"user:1") {
         println!("Updated user:1 = {}", String::from_utf8_lossy(&value));
     }
@@ -332,7 +379,8 @@ fn main() {
     for i in 0..20 {
         let key = format!("product:{}", i);
         let value = format!("Item {}", i);
-        lsm.put(key.into_bytes(), value.into_bytes());
+        lsm.put(key.into_bytes(), value.into_bytes())
+            .expect(&format!("Failed to put product:{}", i));
     }
 
     println!("Entries inserted. Check ./lsm_data/ directory for SSTable files.");
@@ -360,7 +408,8 @@ fn main() {
     println!("--------------------------------");
 
     let score: u64 = 9876543210;
-    lsm.put(b"score:player1".to_vec(), score.to_le_bytes().to_vec());
+    lsm.put(b"score:player1".to_vec(), score.to_le_bytes().to_vec())
+        .expect("Failed to put score");
 
     if let Some(value) = lsm.get(b"score:player1") {
         // Convert bytes back to u64
@@ -385,7 +434,8 @@ fn main() {
     ];
 
     for (key, name) in users {
-        lsm.put(key.as_bytes().to_vec(), name.as_bytes().to_vec());
+        lsm.put(key.as_bytes().to_vec(), name.as_bytes().to_vec())
+            .expect(&format!("Failed to put {}", key));
     }
 
     println!("Inserted {} users", 3);
@@ -415,9 +465,9 @@ mod tests {
     #[test]
     fn test_basic_put_get() {
         let dir = PathBuf::from("./test_lsm_basic");
-        let mut lsm = LSMTree::new(dir.clone(), 1024);
+        let mut lsm = LSMTree::new(dir.clone(), 1024).unwrap();
 
-        lsm.put(b"key1".to_vec(), b"value1".to_vec());
+        lsm.put(b"key1".to_vec(), b"value1".to_vec()).unwrap();
         assert_eq!(lsm.get(b"key1"), Some(b"value1".to_vec()));
 
         fs::remove_dir_all(dir).ok();
@@ -426,10 +476,10 @@ mod tests {
     #[test]
     fn test_update() {
         let dir = PathBuf::from("./test_lsm_update");
-        let mut lsm = LSMTree::new(dir.clone(), 1024);
+        let mut lsm = LSMTree::new(dir.clone(), 1024).unwrap();
 
-        lsm.put(b"key1".to_vec(), b"value1".to_vec());
-        lsm.put(b"key1".to_vec(), b"value2".to_vec());
+        lsm.put(b"key1".to_vec(), b"value1".to_vec()).unwrap();
+        lsm.put(b"key1".to_vec(), b"value2".to_vec()).unwrap();
         assert_eq!(lsm.get(b"key1"), Some(b"value2".to_vec()));
 
         fs::remove_dir_all(dir).ok();
@@ -438,12 +488,33 @@ mod tests {
     #[test]
     fn test_flush() {
         let dir = PathBuf::from("./test_lsm_flush");
-        let mut lsm = LSMTree::new(dir.clone(), 10);
+        let mut lsm = LSMTree::new(dir.clone(), 10).unwrap();
 
-        lsm.put(b"key1".to_vec(), b"value1".to_vec());
-        lsm.put(b"key2".to_vec(), b"value2".to_vec());
+        lsm.put(b"key1".to_vec(), b"value1".to_vec()).unwrap();
+        lsm.put(b"key2".to_vec(), b"value2".to_vec()).unwrap();
 
         assert_eq!(lsm.get(b"key1"), Some(b"value1".to_vec()));
+
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn test_wal_recovery() {
+        let dir = PathBuf::from("./test_lsm_wal_recovery");
+
+        // Write data without flush
+        {
+            let mut lsm = LSMTree::new(dir.clone(), 10000).unwrap();
+            lsm.put(b"recover_key".to_vec(), b"recover_value".to_vec())
+                .unwrap();
+
+            // Prevent automatic flush by using forget
+            std::mem::forget(lsm);
+        }
+
+        // Recover from WAL
+        let lsm = LSMTree::new(dir.clone(), 10000).unwrap();
+        assert_eq!(lsm.get(b"recover_key"), Some(b"recover_value".to_vec()));
 
         fs::remove_dir_all(dir).ok();
     }
