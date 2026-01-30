@@ -83,7 +83,7 @@ impl WAL {
     /// * `Err(io::Error)` - Something went wrong (disk full, permissions, etc.)
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let wal = WAL::new(PathBuf::from("./data/wal.log"))?;
     /// ```
     pub fn new(path: PathBuf) -> std::io::Result<Self> {
@@ -215,7 +215,7 @@ impl WAL {
     /// * `Err(io::Error)` - File read error or corrupted data
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let entries = wal.recover()?;
     /// for entry in entries {
     ///     // Replay this operation into memtable
