@@ -73,7 +73,7 @@ The interactive TUI (`lsm-cli`) provides a beautiful interface to explore the LS
 - **SSTables View**: Browse entries in each SSTable file, see associated Bloom filter stats
 - **Bloom Filters View**: Detailed statistics for each filter including fill ratio and FPP
 
-### TUI Keyboard Shortcuts
+### TUI Keyboard Shortcuts (Still Under Active Development)
 
 | Key | Action |
 |-----|--------|
