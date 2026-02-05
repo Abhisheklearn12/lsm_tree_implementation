@@ -1,0 +1,54 @@
+name: Question
+description: Ask a question about usage or implementation
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're happy to help!
+
+        **Note:** For general discussions, consider using GitHub Discussions instead.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Usage / How-to
+        - Architecture / Design
+        - Performance
+        - Integration
+        - Contributing
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish? What have you tried?
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Relevant Code (if applicable)
+      render: rust
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have read the README and documentation
+          required: true
+        - label: I have searched existing issues and discussions
+          required: true

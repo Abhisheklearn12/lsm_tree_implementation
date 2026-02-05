@@ -1,0 +1,39 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmarks
+        run: cargo bench --bench benchmarks -- --noplot 2>&1 | tee benchmark-output.txt
+        continue-on-error: true  # Benchmarks are optional until set up
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: LSM Tree Benchmarks
+          tool: 'cargo'
+          output-file-path: benchmark-output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false
+        continue-on-error: true  # Skip if benchmarks aren't set up yet

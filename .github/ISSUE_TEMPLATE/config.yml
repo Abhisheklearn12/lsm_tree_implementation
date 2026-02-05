@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/Abhisheklearn12/lsm_tree#readme
+    about: Check out the README for usage examples and architecture details
+  - name: Discussions
+    url: https://github.com/Abhisheklearn12/lsm_tree/discussions
+    about: Ask questions and share ideas in GitHub Discussions
