@@ -141,18 +141,16 @@ impl LSMTree {
         if let Ok(entries) = std::fs::read_dir(data_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                    if filename.starts_with("sstable_") && filename.ends_with(".db") {
-                        if let Some(num_str) = filename
-                            .strip_prefix("sstable_")
-                            .and_then(|s| s.strip_suffix(".db"))
-                        {
-                            if let Ok(num) = num_str.parse::<usize>() {
-                                sstables.push((num, path));
-                                max_counter = max_counter.max(num + 1);
-                            }
-                        }
-                    }
+                if let Some(filename) = path.file_name().and_then(|n| n.to_str())
+                    && filename.starts_with("sstable_")
+                    && filename.ends_with(".db")
+                    && let Some(num_str) = filename
+                        .strip_prefix("sstable_")
+                        .and_then(|s| s.strip_suffix(".db"))
+                    && let Ok(num) = num_str.parse::<usize>()
+                {
+                    sstables.push((num, path));
+                    max_counter = max_counter.max(num + 1);
                 }
             }
         }
@@ -305,6 +303,7 @@ impl LSMTree {
 
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&sstable_path)?;
         let mut writer = BufWriter::new(file);
@@ -322,6 +321,7 @@ impl LSMTree {
         let bloom_path = sstable_path.with_extension("bloom");
         let bloom_file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&bloom_path)?;
         let mut bloom_writer = BufWriter::new(bloom_file);

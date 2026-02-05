@@ -21,7 +21,6 @@
 /// assert!(bf.might_contain(b"user:123"));   // true (definitely or possibly)
 /// assert!(!bf.might_contain(b"user:999"));  // false (definitely not)
 /// ```
-
 use std::io::{Read, Write};
 
 /// A Bloom filter for efficient set membership testing
@@ -33,7 +32,7 @@ use std::io::{Read, Write};
 #[derive(Clone)]
 pub struct BloomFilter {
     /// Bit array stored as bytes (8 bits per byte)
-    /// We use a Vec<u8> instead of a proper bit vector for simplicity
+    /// We use a `Vec<u8>` instead of a proper bit vector for simplicity
     bits: Vec<u8>,
 
     /// Number of bits in the filter (bits.len() * 8)
@@ -73,8 +72,7 @@ impl BloomFilter {
         // Calculate optimal number of bits using formula:
         // m = -n * ln(p) / (ln(2)^2)
         let ln2_squared = std::f64::consts::LN_2 * std::f64::consts::LN_2;
-        let num_bits_f64 =
-            -(expected_items as f64) * false_positive_rate.ln() / ln2_squared;
+        let num_bits_f64 = -(expected_items as f64) * false_positive_rate.ln() / ln2_squared;
         let num_bits = (num_bits_f64.ceil() as usize).max(8); // Minimum 8 bits
 
         // Calculate optimal number of hash functions:
@@ -83,7 +81,7 @@ impl BloomFilter {
         let num_hashes = (num_hashes_f64.ceil() as usize).clamp(1, 16); // Between 1 and 16
 
         // Allocate bit array (round up to nearest byte)
-        let num_bytes = (num_bits + 7) / 8;
+        let num_bytes = num_bits.div_ceil(8);
         let bits = vec![0u8; num_bytes];
 
         Self {
@@ -103,7 +101,7 @@ impl BloomFilter {
     /// * `num_bits` - Total number of bits in the filter
     /// * `num_hashes` - Number of hash functions to use
     pub fn with_params(num_bits: usize, num_hashes: usize) -> Self {
-        let num_bytes = (num_bits + 7) / 8;
+        let num_bytes = num_bits.div_ceil(8);
         let bits = vec![0u8; num_bytes];
 
         Self {
@@ -320,7 +318,7 @@ impl BloomFilter {
         let num_items = u32::from_le_bytes([data[8], data[9], data[10], data[11]]) as usize;
 
         // Calculate expected bit array size
-        let expected_bytes = (num_bits + 7) / 8;
+        let expected_bytes = num_bits.div_ceil(8);
         if data.len() < 12 + expected_bytes {
             return None;
         }
@@ -354,7 +352,7 @@ impl BloomFilter {
         let num_items = u32::from_le_bytes([header[8], header[9], header[10], header[11]]) as usize;
 
         // Read bit array
-        let num_bytes = (num_bits + 7) / 8;
+        let num_bytes = num_bits.div_ceil(8);
         let mut bits = vec![0u8; num_bytes];
         reader.read_exact(&mut bits)?;
 

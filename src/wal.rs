@@ -51,7 +51,7 @@ pub struct WALEntry {
 /// guarantees that even if the power goes out, the operation is saved.
 ///
 /// File format for each entry:
-/// [operation_type: 1 byte][key_length: 4 bytes][key_bytes][value_length: 4 bytes][value_bytes]
+/// `[operation_type: 1 byte][key_length: 4 bytes][key_bytes][value_length: 4 bytes][value_bytes]`
 ///
 /// This format is self-describing - we can parse it even if we don't know
 /// how many entries are in the file. Just keep reading until EOF.
@@ -464,11 +464,11 @@ mod tests {
         assert_eq!(entries.len(), 10);
 
         // Check each entry is in the correct order
-        for i in 0..10 {
+        for (i, entry) in entries.iter().enumerate().take(10) {
             let expected_key = format!("key{}", i);
             let expected_value = format!("value{}", i);
-            assert_eq!(entries[i].key, expected_key.as_bytes());
-            assert_eq!(entries[i].value, expected_value.as_bytes());
+            assert_eq!(entry.key, expected_key.as_bytes());
+            assert_eq!(entry.value, expected_value.as_bytes());
         }
 
         fs::remove_file(path).ok();

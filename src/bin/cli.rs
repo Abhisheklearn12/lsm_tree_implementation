@@ -7,16 +7,16 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use lsm_tree::LSMTree;
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Tabs},
-    Frame, Terminal,
 };
 use std::{
     io,
@@ -127,12 +127,12 @@ impl App {
     }
 
     fn put(&mut self, key: String, value: String) {
-        match self.lsm.put(key.as_bytes().to_vec(), value.as_bytes().to_vec()) {
+        match self
+            .lsm
+            .put(key.as_bytes().to_vec(), value.as_bytes().to_vec())
+        {
             Ok(_) => {
-                self.add_message(
-                    format!("PUT {} = {}", key, value),
-                    MessageType::Success,
-                );
+                self.add_message(format!("PUT {} = {}", key, value), MessageType::Success);
                 self.operation_history.push(Operation::Put(key, value));
             }
             Err(e) => {
@@ -170,7 +170,13 @@ impl App {
             self.demo_step += 1;
         } else if self.demo_step < demo_keys.len() + 5 {
             // Search for some keys
-            let search_keys = ["user:alice", "user:nonexistent", "product:1", "missing:key", "config:theme"];
+            let search_keys = [
+                "user:alice",
+                "user:nonexistent",
+                "product:1",
+                "missing:key",
+                "config:theme",
+            ];
             let idx = self.demo_step - demo_keys.len();
             let key = search_keys[idx];
             let result = self.get(key);
@@ -214,10 +220,10 @@ fn main() -> io::Result<()> {
             .checked_sub(last_tick.elapsed())
             .unwrap_or_else(|| Duration::from_secs(0));
 
-        if crossterm::event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                handle_input(&mut app, key.code, key.modifiers);
-            }
+        if crossterm::event::poll(timeout)?
+            && let Event::Key(key) = event::read()?
+        {
+            handle_input(&mut app, key.code, key.modifiers);
         }
 
         if last_tick.elapsed() >= tick_rate {
@@ -288,7 +294,10 @@ fn handle_input(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
                 if let Err(e) = app.lsm.flush() {
                     app.add_message(format!("Flush error: {}", e), MessageType::Error);
                 } else {
-                    app.add_message("Flushed memtable to SSTable".to_string(), MessageType::Success);
+                    app.add_message(
+                        "Flushed memtable to SSTable".to_string(),
+                        MessageType::Success,
+                    );
                     app.operation_history.push(Operation::Flush);
                 }
             }
@@ -438,10 +447,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         Span::styled("  LSM Tree ", Style::default().fg(Color::Cyan).bold()),
         Span::styled("Explorer", Style::default().fg(Color::Yellow).bold()),
         Span::raw("  "),
-        Span::styled(
-            "[Bloom Filters Enabled]",
-            Style::default().fg(Color::Green),
-        ),
+        Span::styled("[Bloom Filters Enabled]", Style::default().fg(Color::Green)),
     ])])
     .alignment(Alignment::Center)
     .block(
@@ -453,7 +459,12 @@ fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(title, chunks[0]);
 
     // Tabs
-    let tab_titles = vec!["[1] Dashboard", "[2] MemTable", "[3] SSTables", "[4] Bloom Filters"];
+    let tab_titles = vec![
+        "[1] Dashboard",
+        "[2] MemTable",
+        "[3] SSTables",
+        "[4] Bloom Filters",
+    ];
     let tabs = Tabs::new(tab_titles)
         .block(Block::default().borders(Borders::ALL).title(" Navigation "))
         .select(app.current_tab)
@@ -526,7 +537,11 @@ fn render_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from(vec![
             Span::styled("  MemTable Size:    ", Style::default().fg(Color::Gray)),
             Span::styled(
-                format!("{} / {} bytes", app.lsm.memtable_size(), app.lsm.memtable_threshold()),
+                format!(
+                    "{} / {} bytes",
+                    app.lsm.memtable_size(),
+                    app.lsm.memtable_threshold()
+                ),
                 Style::default().fg(Color::Yellow),
             ),
         ]),
@@ -593,16 +608,17 @@ fn render_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
         .label(format!("{}%", memtable_pct));
     f.render_widget(gauge, gauge_chunks[0]);
 
-    let gauge_info = Paragraph::new(vec![
-        Line::from(if memtable_pct >= 100 {
-            Span::styled("  Will flush on next write!", Style::default().fg(Color::Red).bold())
-        } else {
-            Span::styled(
-                format!("  {}% until flush", 100 - memtable_pct),
-                Style::default().fg(Color::Gray),
-            )
-        }),
-    ]);
+    let gauge_info = Paragraph::new(vec![Line::from(if memtable_pct >= 100 {
+        Span::styled(
+            "  Will flush on next write!",
+            Style::default().fg(Color::Red).bold(),
+        )
+    } else {
+        Span::styled(
+            format!("  {}% until flush", 100 - memtable_pct),
+            Style::default().fg(Color::Gray),
+        )
+    })]);
     f.render_widget(gauge_info, gauge_chunks[1]);
 
     // Bloom filter effectiveness
@@ -685,7 +701,10 @@ fn render_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
                 },
             ])),
             Operation::Flush => ListItem::new(Line::from(vec![
-                Span::styled(" FLUSH ", Style::default().fg(Color::Black).bg(Color::Yellow)),
+                Span::styled(
+                    " FLUSH ",
+                    Style::default().fg(Color::Black).bg(Color::Yellow),
+                ),
                 Span::styled(" MemTable -> SSTable", Style::default().fg(Color::Yellow)),
             ])),
         })
@@ -710,8 +729,14 @@ fn render_memtable(f: &mut Frame, app: &mut App, area: Rect) {
             let key_str = String::from_utf8_lossy(k);
             let value_str = String::from_utf8_lossy(v);
             ListItem::new(Line::from(vec![
-                Span::styled(format!("{:4} ", i + 1), Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{}", key_str), Style::default().fg(Color::Cyan).bold()),
+                Span::styled(
+                    format!("{:4} ", i + 1),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(
+                    format!("{}", key_str),
+                    Style::default().fg(Color::Cyan).bold(),
+                ),
                 Span::styled(" = ", Style::default().fg(Color::Gray)),
                 Span::styled(format!("{}", value_str), Style::default().fg(Color::White)),
             ]))
@@ -838,7 +863,11 @@ fn render_sstables(f: &mut Frame, app: &mut App, area: Rect) {
         let bloom_stats = app.lsm.bloom_filter_stats();
         let bf_info = if app.selected_sstable < bloom_stats.individual_stats.len() {
             let stat = &bloom_stats.individual_stats[app.selected_sstable];
-            format!(" [BF: {} items, {:.1}% FPP] ", stat.num_items, stat.estimated_fpp * 100.0)
+            format!(
+                " [BF: {} items, {:.1}% FPP] ",
+                stat.num_items,
+                stat.estimated_fpp * 100.0
+            )
         } else {
             String::new()
         };
@@ -962,7 +991,10 @@ fn render_bloom_filters(f: &mut Frame, app: &mut App, area: Rect) {
         .map(|(i, stat)| {
             let fill_bar = create_fill_bar(stat.fill_ratio, 20);
             ListItem::new(Line::from(vec![
-                Span::styled(format!("  BF {} ", i), Style::default().fg(Color::Magenta).bold()),
+                Span::styled(
+                    format!("  BF {} ", i),
+                    Style::default().fg(Color::Magenta).bold(),
+                ),
                 Span::styled(
                     format!("items:{:4} ", stat.num_items),
                     Style::default().fg(Color::White),
@@ -1021,7 +1053,10 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let demo_status = if app.auto_demo {
-        Span::styled(" [DEMO RUNNING] ", Style::default().fg(Color::Magenta).bold())
+        Span::styled(
+            " [DEMO RUNNING] ",
+            Style::default().fg(Color::Magenta).bold(),
+        )
     } else {
         Span::raw("")
     };
@@ -1178,21 +1213,33 @@ fn render_help_popup(f: &mut Frame) {
             Style::default().fg(Color::Cyan).bold(),
         )),
         Line::from(""),
-        Line::from(Span::styled("  Navigation:", Style::default().fg(Color::Yellow).bold())),
+        Line::from(Span::styled(
+            "  Navigation:",
+            Style::default().fg(Color::Yellow).bold(),
+        )),
         Line::from("    1-4, Tab    Switch between tabs"),
         Line::from("    j/k, ↑/↓    Scroll through entries"),
         Line::from("    ←/→         Switch SSTable (in SSTable view)"),
         Line::from(""),
-        Line::from(Span::styled("  Operations:", Style::default().fg(Color::Yellow).bold())),
+        Line::from(Span::styled(
+            "  Operations:",
+            Style::default().fg(Color::Yellow).bold(),
+        )),
         Line::from("    p, i        Put a new key-value pair"),
         Line::from("    g, /        Get/search for a key"),
         Line::from("    f           Flush memtable to SSTable"),
         Line::from("    r           Reset Bloom filter statistics"),
         Line::from(""),
-        Line::from(Span::styled("  Demo:", Style::default().fg(Color::Yellow).bold())),
+        Line::from(Span::styled(
+            "  Demo:",
+            Style::default().fg(Color::Yellow).bold(),
+        )),
         Line::from("    d           Toggle auto-demo mode"),
         Line::from(""),
-        Line::from(Span::styled("  General:", Style::default().fg(Color::Yellow).bold())),
+        Line::from(Span::styled(
+            "  General:",
+            Style::default().fg(Color::Yellow).bold(),
+        )),
         Line::from("    h           Show/hide this help"),
         Line::from("    q           Quit"),
         Line::from("    Esc         Cancel current operation"),

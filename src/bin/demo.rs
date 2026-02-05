@@ -61,7 +61,7 @@ fn main() {
         let key = format!("product:{}", i);
         let value = format!("Item {}", i);
         lsm.put(key.into_bytes(), value.into_bytes())
-            .expect(&format!("Failed to put product:{}", i));
+            .unwrap_or_else(|_| panic!("Failed to put product:{}", i));
     }
 
     println!("Number of entries in memtable: {}", lsm.len());
