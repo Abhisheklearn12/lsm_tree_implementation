@@ -9,7 +9,7 @@
 /// - Without WAL: Write to memory → crash → data lost forever
 /// - With WAL: Write to journal → write to memory → crash → replay journal → data recovered!
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
 
 /// Types of operations we can log
@@ -309,16 +309,18 @@ impl WAL {
         // Make sure any buffered writes are on disk first
         self.writer.flush()?;
 
-        // Get the underlying file handle from the buffered writer
-        let file = self.writer.get_mut();
+        // On Windows, we can't truncate a file while it's open with a write handle.
+        // The safest cross-platform approach is to close and recreate the file.
+        // We do this by creating a new file with truncate mode, which replaces
+        // the old file contents.
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&self.path)?;
 
-        // Truncate file to 0 bytes - deletes all content
-        // This is much faster than deleting and recreating the file
-        file.set_len(0)?;
-
-        // Move file pointer back to the beginning
-        // Next write will start at position 0
-        file.seek(SeekFrom::Start(0))?;
+        // Replace the old writer with a new one
+        self.writer = BufWriter::new(file);
 
         Ok(())
     }
